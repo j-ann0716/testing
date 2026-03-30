@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shopee Review Analyzer</title>
+  <style>
+    body { font-family: system-ui; padding: 16px; max-width: 600px; margin: auto; }
+    input, button { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; }
+    #result { background: #f5f5f5; padding: 12px; border-radius: 8px; margin-top: 16px; white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h2>🛒 Shopee Review Analyzer</h2>
+  <input id="url" placeholder="Paste Shopee URL" value="https://s.shopee.ph/20r7FKUzIB">
+  <button onclick="analyze()">Analyze Reviews</button>
+  <div id="result"></div>
+
+  <script>
+    const API_URL = "https://flummoxedly-summerly-tenisha.ngrok-free.dev";
+
+    async function analyze() {
+      const url = document.getElementById('url').value;
+      const result = document.getElementById('result');
+      result.textContent = "⏳ Analyzing... (this may take 1-2 minutes)";
+      
+      try {
+        const res = await fetch(`${API_URL}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        result.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        result.textContent = "❌ Error: " + e.message;
+      }
+    }
+  </script>
+</body>
+</html>
