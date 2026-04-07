@@ -62,7 +62,7 @@
       container.innerHTML = "<p>Loading history...</p>";   // show loading state
     
       try {
-        const res = await fetch(`/proxy_history?device_id=${deviceId}`);
+        const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     
         const data = await res.json();
