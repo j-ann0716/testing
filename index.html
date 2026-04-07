@@ -60,7 +60,11 @@
     async function loadHistory() {
       const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
       const data = await res.json();
-    
+      console.log("History data length:", data.length, data); 
+      if (!data.length) {
+        container.innerHTML = "<p>No history found for this device.</p>";
+        return;
+      }
       console.log("Device ID:", deviceId);
       console.log("History data:", data); 
     
