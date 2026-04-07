@@ -51,13 +51,22 @@
     }
     
     let sentimentChart, authChart;
+    
+    
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+      document.getElementById(tab).style.display = 'block';
+    }
     async function loadHistory() {
       const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
       const data = await res.json();
     
+      console.log("Device ID:", deviceId);
+      console.log("History data:", data); 
+    
       const container = document.getElementById("history");
       container.innerHTML = "<h3>History</h3>";
-      console.log("Device ID:", deviceId);
+    
       data.forEach(item => {
         const div = document.createElement("div");
         div.style.padding = "10px";
@@ -74,12 +83,6 @@
         container.appendChild(div);
       });
     }
-    
-    function showTab(tab) {
-      document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
-      document.getElementById(tab).style.display = 'block';
-    }
-
     async function analyze() {
       const url = document.getElementById('url').value;
 
