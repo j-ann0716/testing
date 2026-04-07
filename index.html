@@ -34,6 +34,8 @@
   <div id="summary" class="tab" style="display:none;">
     <div id="summaryText"></div>
   </div>
+  <button onclick="loadHistory()">📜 View History</button>
+  <div id="history"></div>
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -41,8 +43,38 @@
   <script>
     const API_URL = "https://flummoxedly-summerly-tenisha.ngrok-free.dev";
 
-    let sentimentChart, authChart;
+    let deviceId = localStorage.getItem("device_id");
 
+    if (!deviceId) {
+      deviceId = crypto.randomUUID();
+      localStorage.setItem("device_id", deviceId);
+    }
+    
+    let sentimentChart, authChart;
+    async function loadHistory() {
+      const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
+      const data = await res.json();
+    
+      const container = document.getElementById("history");
+      container.innerHTML = "<h3>History</h3>";
+      console.log("Device ID:", deviceId);
+      data.forEach(item => {
+        const div = document.createElement("div");
+        div.style.padding = "10px";
+        div.style.marginBottom = "8px";
+        div.style.background = "#eee";
+        div.style.borderRadius = "6px";
+    
+        div.innerHTML = `
+          <b>${item.product_name || "Unknown Product"}</b><br>
+          ${item.dominant_type} • ${item.total_reviews} reviews<br>
+          <small>${item.timestamp}</small>
+        `;
+    
+        container.appendChild(div);
+      });
+    }
+    
     function showTab(tab) {
       document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
       document.getElementById(tab).style.display = 'block';
@@ -54,7 +86,10 @@
       const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ 
+          url,
+          device_id: deviceId
+        })
       });
 
       const data = await res.json();
