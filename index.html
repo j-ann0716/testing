@@ -141,7 +141,7 @@ async function loadHistory() {
         <small>${new Date(item.timestamp).toLocaleString()}</small>
       `;
 
-      div.onclick = () => openHistoryItem(item.id);
+      div.onclick = () => openHistoryItem(item.session_id);
 
       container.appendChild(div);
     });
@@ -182,6 +182,11 @@ async function analyze() {
 }
 
 async function openHistoryItem(id) {
+  if (!id) {
+    console.error("Missing session id:", id);
+    return;
+  }
+
   const res = await fetch(`/api/proxy_history_detail?id=${id}`);
   const data = await res.json();
 
