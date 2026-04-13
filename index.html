@@ -3,26 +3,76 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shopee Review Analyzer</title>
+
   <style>
-    body { font-family: system-ui; padding: 16px; max-width: 600px; margin: auto; }
-    input, button { width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; }
-    #result { background: #f5f5f5; padding: 12px; border-radius: 8px; margin-top: 16px; white-space: pre-wrap; word-break: break-all; }
+    body {
+      font-family: system-ui;
+      padding: 16px;
+      max-width: 700px;
+      margin: auto;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      font-size: 16px;
+    }
+
+    .card {
+      background: #f5f5f5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+
+    .tab {
+      margin-top: 15px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid #ccc;
+      text-align: left;
+    }
+
+    th {
+      background: #ddd;
+    }
   </style>
 </head>
+
 <body>
-  <h2>🛒 Shopee Review Analyzer</h2>
+
+<div id="mainPage">
+  <h2>Shopee Review Analyzer</h2>
 
   <input id="url" placeholder="Paste Shopee URL">
   <button onclick="analyze()">Analyze Reviews</button>
 
-  <!-- Tabs -->
+  <button onclick="loadHistory()">View History</button>
+  <div id="history"></div>
+</div>
+
+<div id="detailPage" style="display:none;">
+  <button onclick="goBack()">Back</button>
+
+  <h2 id="detailTitle"></h2>
+  <a id="detailLink" target="_blank"></a>
+
   <div style="margin-top:20px;">
-    <button onclick="showTab('sentiment')">📊 Sentiment</button>
-    <button onclick="showTab('authenticity')">🛡️ Authenticity</button>
-    <button onclick="showTab('summary')">🧠 AI Summary</button>
+    <button onclick="showTab('sentiment')">Sentiment</button>
+    <button onclick="showTab('authenticity')">Authenticity</button>
+    <button onclick="showTab('summary')">AI Summary</button>
   </div>
 
-  <!-- Tab Contents -->
   <div id="sentiment" class="tab">
     <canvas id="sentimentChart"></canvas>
   </div>
@@ -34,126 +84,199 @@
   <div id="summary" class="tab" style="display:none;">
     <div id="summaryText"></div>
   </div>
-  <button onclick="loadHistory()">📜 View History</button>
-  <div id="history"></div>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <div id="reviewSection"></div>
+</div>
 
-  <script>
-    const API_URL = "https://flummoxedly-summerly-tenisha.ngrok-free.dev";
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    let deviceId = localStorage.getItem("device_id");
+<script>
+const API_URL = "https://flummoxedly-summerly-tenisha.ngrok-free.dev";
 
-    if (!deviceId) {
-      deviceId = crypto.randomUUID();
-      localStorage.setItem("device_id", deviceId);
+let deviceId = localStorage.getItem("device_id");
+if (!deviceId) {
+  deviceId = crypto.randomUUID();
+  localStorage.setItem("device_id", deviceId);
+}
+
+let sentimentChart, authChart;
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.getElementById(tab).style.display = 'block';
+}
+
+function goToDetailPage() {
+  document.getElementById("mainPage").style.display = "none";
+  document.getElementById("detailPage").style.display = "block";
+}
+
+function goBack() {
+  document.getElementById("detailPage").style.display = "none";
+  document.getElementById("mainPage").style.display = "block";
+}
+
+async function loadHistory() {
+  const container = document.getElementById("history");
+  container.innerHTML = "Loading...";
+
+  try {
+    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
+    const data = await res.json();
+
+    if (!data.length) {
+      container.innerHTML = "No history found.";
+      return;
     }
-    
-    let sentimentChart, authChart;
-    
-    
-    function showTab(tab) {
-      document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
-      document.getElementById(tab).style.display = 'block';
+
+    container.innerHTML = "<h3>History</h3>";
+
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "card";
+
+      div.innerHTML = `
+        <b>${item.product_name || "Unknown Product"}</b><br>
+        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
+        <small>${new Date(item.timestamp).toLocaleString()}</small>
+      `;
+
+      div.onclick = () => openHistoryItem(item.id);
+
+      container.appendChild(div);
+    });
+
+  } catch (err) {
+    container.innerHTML = "Failed to load history.";
+  }
+}
+
+async function analyze() {
+  const url = document.getElementById('url').value;
+
+  const res = await fetch(`${API_URL}/analyze`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      url,
+      device_id: deviceId
+    })
+  });
+
+  const data = await res.json();
+
+  goToDetailPage();
+
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.final_url;
+  link.innerText = data.final_url;
+
+  document.getElementById("summaryText").innerText = data.summary;
+
+  renderCharts(data);
+  renderReviewTable(data.reviews);
+
+  showTab("summary");
+}
+
+async function openHistoryItem(id) {
+  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  const data = await res.json();
+
+  goToDetailPage();
+
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.url;
+  link.innerText = data.url;
+
+  document.getElementById("summaryText").innerText = data.summary;
+
+  renderCharts(data);
+  renderReviewTable(data.reviews);
+
+  showTab("summary");
+}
+
+function renderCharts(data) {
+  const sentiment = data.sentiment_distribution || {};
+  const sData = [
+    sentiment["Positive"] || 0,
+    sentiment["Negative"] || 0,
+    sentiment["Neutral/Mixed"] || 0
+  ];
+
+  if (sentimentChart) sentimentChart.destroy();
+
+  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
+    type: 'pie',
+    data: {
+      labels: ['Positive', 'Negative', 'Neutral/Mixed'],
+      datasets: [{
+        data: sData
+      }]
     }
-    async function loadHistory() {
-      const container = document.getElementById("history"); // define container first
-      container.innerHTML = "<p>Loading history...</p>";   // show loading state
-    
-      try {
-        const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-    
-        const data = await res.json();
-    
-        if (!data.length) {
-          container.innerHTML = "<p>No history found for this device.</p>";
-          return;
-        }
-    
-        // Clear container and add header
-        container.innerHTML = "<h3>📜 History</h3>";
-    
-        data.forEach(item => {
-          const div = document.createElement("div");
-          div.style.padding = "10px";
-          div.style.marginBottom = "8px";
-          div.style.background = "#eee";
-          div.style.borderRadius = "6px";
-    
-          // Use template literal for clean HTML
-          div.innerHTML = `
-            <b>${item.product_name || "Unknown Product"}</b><br>
-            <span>Dominant: ${item.dominant_type} • Reviews: ${item.total_reviews}</span><br>
-            <small>${new Date(item.timestamp).toLocaleString()}</small>
-          `;
-    
-          container.appendChild(div);
-        });
-    
-      } catch (err) {
-        console.error("Error loading history:", err);
-        container.innerHTML = `<p style="color:red;">Failed to load history: ${err.message}</p>`;
-      }
+  });
+
+  const spam = data.spam_count || 0;
+  const inauth = data.inauthentic_count || 0;
+  const authentic = data.total_reviews - spam - inauth;
+
+  if (authChart) authChart.destroy();
+
+  authChart = new Chart(document.getElementById('authChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Spam', 'Inauthentic', 'Authentic'],
+      datasets: [{
+        label: 'Review Count',
+        data: [spam, inauth, authentic]
+      }]
     }
-    async function analyze() {
-      const url = document.getElementById('url').value;
+  });
+}
 
-      const res = await fetch(`${API_URL}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          url,
-          device_id: deviceId
-        })
-      });
+function renderReviewTable(reviews) {
+  const container = document.getElementById("reviewSection");
 
-      const data = await res.json();
+  if (!reviews || reviews.length === 0) {
+    container.innerHTML = "No review data.";
+    return;
+  }
 
-      // ---- SENTIMENT PIE ----
-      const sentiment = data.sentiment_distribution || {};
-      const sData = [
-        sentiment["Positive"] || 0,
-        sentiment["Negative"] || 0,
-        sentiment["Neutral/Mixed"] || 0
-      ];
+  let html = `
+    <h3>Review Details</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Review</th>
+          <th>Rate</th>
+          <th>Sentiment</th>
+          <th>Authenticity</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
 
-      if (sentimentChart) sentimentChart.destroy();
+  reviews.forEach(r => {
+    html += `
+      <tr>
+        <td>${r.comment || ""}</td>
+        <td>${r.rating || "-"}</td>
+        <td>${r.sentiment || "-"}</td>
+        <td>${r.inauthentic ? "Inauthentic" : "Authentic"}</td>
+      </tr>
+    `;
+  });
 
-      sentimentChart = new Chart(document.getElementById('sentimentChart'), {
-        type: 'pie',
-        data: {
-          labels: ['Positive', 'Negative', 'Neutral/Mixed'],
-          datasets: [{
-            data: sData,
-            backgroundColor: ['#4CAF50', '#F44336', '#FFC107']
-          }]
-        }
-      });
+  html += "</tbody></table>";
 
-      // ---- AUTHENTICITY BAR ----
-      const spam = data.spam_count || 0;
-      const inauth = data.inauthentic_count || 0;
-      const authentic = data.total_reviews - spam - inauth;
+  container.innerHTML = html;
+}
+</script>
 
-      if (authChart) authChart.destroy();
-
-      authChart = new Chart(document.getElementById('authChart'), {
-        type: 'bar',
-        data: {
-          labels: ['Spam', 'Inauthentic', 'Authentic'],
-          datasets: [{
-            label: 'Review Count',
-            data: [spam, inauth, authentic],
-            backgroundColor: ['#9E9E9E', '#FF5722', '#2196F3']
-          }]
-        }
-      });
-
-      // ---- SUMMARY ----
-      document.getElementById('summaryText').innerText = data.summary;
-    }
-  </script>
 </body>
 </html>
