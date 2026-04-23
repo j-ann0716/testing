@@ -19,10 +19,6 @@
       font-size: 16px;
     }
 
-    button:disabled {
-      background: #ccc;
-    }
-
     .card {
       background: #f5f5f5;
       padding: 12px;
@@ -48,9 +44,8 @@
     th { background: #ddd; }
 
     #queueInfo {
-      margin-top: 10px;
       font-weight: bold;
-      color: #444;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -61,7 +56,7 @@
   <h2>Shopee Review Analyzer</h2>
 
   <input id="url" placeholder="Paste Shopee URL">
-  <button onclick="analyze()" id="analyzeBtn">Analyze Reviews</button>
+  <button onclick="analyze()">Analyze Reviews</button>
 
   <div id="queueInfo"></div>
 
@@ -91,6 +86,7 @@
   <div id="history"></div>
 </div>
 
+<!-- DETAIL PAGE -->
 <div id="detailPage" style="display:none;">
   <button onclick="goBack()">Back</button>
 
@@ -136,10 +132,6 @@ let sentimentChart, authChart;
 // =========================
 async function analyze() {
   const url = document.getElementById('url').value;
-  const btn = document.getElementById("analyzeBtn");
-
-  btn.disabled = true;
-  document.getElementById("queueInfo").innerText = "Sending request...";
 
   const res = await fetch(`${API_URL}/analyze`, {
     method: "POST",
@@ -149,43 +141,19 @@ async function analyze() {
 
   const data = await res.json();
 
-  document.getElementById("queueInfo").innerText =
-    `You are #${data.queue_position} in queue (~${Math.ceil(data.estimated_wait_seconds/60)} min)`;
+  document.getElementById("resultSection").style.display = "block";
+  document.getElementById("summaryText").innerText = data.summary;
 
-  pollStatus(data.job_id);
+  renderCharts(data);
+  renderReviewTable(data.reviews);
+
+  showTab("summary");
+
+  await loadHistory(); // refresh history after analyze
 }
 
 // =========================
-// POLLING (IMPORTANT FIX)
-// =========================
-async function pollStatus(jobId) {
-  const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
-  const data = await res.json();
-
-  document.getElementById("queueInfo").innerText =
-    `Status: ${data.status} | Queue: ${data.queue_position} | ETA: ${Math.ceil(data.estimated_wait_seconds/60)} min`;
-
-  if (data.status === "done") {
-    document.getElementById("analyzeBtn").disabled = false;
-
-    if (data.result) {
-      showResult(data.result);
-    }
-
-    return;
-  }
-
-  if (data.status === "error") {
-    document.getElementById("queueInfo").innerText = "Error occurred";
-    document.getElementById("analyzeBtn").disabled = false;
-    return;
-  }
-
-  setTimeout(() => pollStatus(jobId), 2000);
-}
-
-// =========================
-// HISTORY (FIXED ROUTES)
+// HISTORY (FIXED)
 // =========================
 async function loadHistory() {
   const container = document.getElementById("history");
@@ -207,54 +175,48 @@ async function loadHistory() {
       div.className = "card";
 
       div.innerHTML = `
-        <b>${item.product_name || "Unknown"}</b><br>
+        <b>${item.product_name || "Unknown Product"}</b><br>
         Type: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
-        <small>${new Date(item.timestamp).toLocaleString()}</small>
+        <small>${item.timestamp}</small>
       `;
 
       div.onclick = () => openHistoryItem(item.analysis_id);
+
       container.appendChild(div);
     });
 
   } catch (err) {
+    console.error(err);
     container.innerHTML = "Failed to load history.";
   }
 }
 
 // =========================
-// HISTORY DETAIL (FIXED)
+// DETAIL VIEW (FIXED)
 // =========================
 async function openHistoryItem(id) {
-  const res = await fetch(`${API_URL}/history_detail?id=${id}`);
-  const data = await res.json();
+  try {
+    const res = await fetch(`${API_URL}/history_detail?id=${id}`);
+    const data = await res.json();
 
-  goToDetailPage();
+    document.getElementById("mainPage").style.display = "none";
+    document.getElementById("detailPage").style.display = "block";
 
-  document.getElementById("detailTitle").innerText = data.product_name;
+    document.getElementById("detailTitle").innerText = data.product_name || "";
+    document.getElementById("detailLink").href = data.url || "";
+    document.getElementById("detailLink").innerText = data.url || "";
 
-  const link = document.getElementById("detailLink");
-  link.href = data.url || "#";
-  link.innerText = data.url || "";
+    document.getElementById("summaryTextDetail").innerText = data.summary || "";
 
-  document.getElementById("summaryTextDetail").innerText = data.summary;
+    renderCharts(data, "detail");
+    renderReviewTable(data.reviews, "detail");
 
-  renderCharts(data, "detail");
-  renderReviewTable(data.reviews, "detail");
+    showTab("summary", "detail");
 
-  showTab("summary", "detail");
-}
-
-// =========================
-// RESULT
-// =========================
-function showResult(data) {
-  document.getElementById("resultSection").style.display = "block";
-  document.getElementById("summaryText").innerText = data.summary;
-
-  renderCharts(data);
-  renderReviewTable(data.reviews);
-
-  showTab("summary");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to load detail");
+  }
 }
 
 // =========================
@@ -277,10 +239,10 @@ function renderCharts(data, mode = "main") {
     ? document.getElementById('authChartDetail')
     : document.getElementById('authChart');
 
-  if (sentimentChart) sentimentChart.destroy();
-  if (authChart) authChart.destroy();
+  if (mode === "main" && sentimentChart) sentimentChart.destroy();
+  if (mode === "detail" && sentimentChart) sentimentChart.destroy();
 
-  sentimentChart = new Chart(sentimentCanvas, {
+  new Chart(sentimentCanvas, {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
@@ -292,11 +254,17 @@ function renderCharts(data, mode = "main") {
   const inauth = data.inauthentic_count || 0;
   const authentic = (data.total_reviews || 0) - spam - inauth;
 
-  authChart = new Chart(authCanvas, {
+  if (mode === "main" && authChart) authChart.destroy();
+  if (mode === "detail" && authChart) authChart.destroy();
+
+  new Chart(authCanvas, {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
-      datasets: [{ data: [spam, inauth, authentic] }]
+      datasets: [{
+        label: 'Review Count',
+        data: [spam, inauth, authentic]
+      }]
     }
   });
 }
@@ -314,9 +282,19 @@ function renderReviewTable(reviews, mode = "main") {
     return;
   }
 
-  let html = `<h3>Review Details</h3><table><tr>
-    <th>Review</th><th>Rate</th><th>Sentiment</th><th>Auth</th>
-  </tr>`;
+  let html = `
+    <h3>Review Details</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Review</th>
+          <th>Rate</th>
+          <th>Sentiment</th>
+          <th>Authenticity</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
 
   reviews.forEach(r => {
     html += `
@@ -325,36 +303,32 @@ function renderReviewTable(reviews, mode = "main") {
         <td>${r.rating || "-"}</td>
         <td>${r.sentiment || "-"}</td>
         <td>${r.inauthentic ? "Inauthentic" : "Authentic"}</td>
-      </tr>`;
+      </tr>
+    `;
   });
 
-  html += "</table>";
+  html += "</tbody></table>";
   container.innerHTML = html;
 }
 
 // =========================
-// UI
+// UI HELPERS
 // =========================
 function showTab(tab, mode = "main") {
   const suffix = mode === "detail" ? "Detail" : "";
 
-  ["sentiment","authenticity","summary"].forEach(t => {
+  ["sentiment", "authenticity", "summary"].forEach(t => {
     const el = document.getElementById(t + suffix);
     if (el) el.style.display = "none";
   });
 
-  document.getElementById(tab + suffix).style.display = "block";
-}
-
-function goToDetailPage() {
-  document.getElementById("mainPage").style.display = "none";
-  document.getElementById("detailPage").style.display = "block";
+  const target = document.getElementById(tab + suffix);
+  if (target) target.style.display = "block";
 }
 
 function goBack() {
   document.getElementById("detailPage").style.display = "none";
   document.getElementById("mainPage").style.display = "block";
-  document.getElementById("resultSection").style.display = "none";
 }
 </script>
 
