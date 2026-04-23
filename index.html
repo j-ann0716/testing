@@ -19,12 +19,9 @@
       font-size: 16px;
     }
 
-    .card {
-      background: #f5f5f5;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 10px;
-      cursor: pointer;
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
     }
 
     .tab {
@@ -56,41 +53,34 @@
 
 <body>
 
-<div id="mainPage">
-  <h2>Shopee Review Analyzer</h2>
+<h2>Shopee Review Analyzer</h2>
 
-  <input id="url" placeholder="Paste Shopee URL">
-  <button onclick="analyze()">Analyze Reviews</button>
-  
-  <div id="resultSection" style="display:none; margin-top:20px;">
-  
-    <!-- HIDDEN UNTIL DONE -->
-    <div id="tabs" style="display:none;">
-      <button onclick="showTab('sentiment')">Sentiment</button>
-      <button onclick="showTab('authenticity')">Authenticity</button>
-      <button onclick="showTab('summary')">AI Summary</button>
-    </div>
+<input id="url" placeholder="Paste Shopee URL">
+<button id="analyzeBtn" onclick="analyze()">Analyze Reviews</button>
 
-    <!-- LOADING STATE -->
-    <div id="loadingText"></div>
-  
-    <div id="sentiment" class="tab">
-      <canvas id="sentimentChart"></canvas>
-    </div>
-  
-    <div id="authenticity" class="tab" style="display:none;">
-      <canvas id="authChart"></canvas>
-    </div>
-  
-    <div id="summary" class="tab" style="display:none;">
-      <div id="summaryText"></div>
-    </div>
-  
-    <div id="reviewSection"></div>
+<div id="resultSection" style="display:none; margin-top:20px;">
+
+  <div id="tabs" style="display:none;">
+    <button onclick="showTab('sentiment')">Sentiment</button>
+    <button onclick="showTab('authenticity')">Authenticity</button>
+    <button onclick="showTab('summary')">AI Summary</button>
   </div>
-  
-  <button onclick="loadHistory()">View History</button>
-  <div id="history"></div>
+
+  <div id="loadingText"></div>
+
+  <div id="sentiment" class="tab">
+    <canvas id="sentimentChart"></canvas>
+  </div>
+
+  <div id="authenticity" class="tab" style="display:none;">
+    <canvas id="authChart"></canvas>
+  </div>
+
+  <div id="summary" class="tab" style="display:none;">
+    <div id="summaryText"></div>
+  </div>
+
+  <div id="reviewSection"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -105,74 +95,114 @@ if (!deviceId) {
 }
 
 let sentimentChart, authChart;
+let currentInterval = null;
 
 function showTab(tab) {
   ["sentiment", "authenticity", "summary"].forEach(id => {
     document.getElementById(id).style.display = "none";
   });
-
   document.getElementById(tab).style.display = "block";
 }
 
 async function analyze() {
   const url = document.getElementById('url').value;
+  const btn = document.getElementById("analyzeBtn");
 
-  const res = await fetch(`${API_URL}/analyze`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      url,
-      device_id: deviceId
-    })
-  });
+  if (!url) {
+    alert("Please enter a URL");
+    return;
+  }
 
-  const data = await res.json();
-  const jobId = data.job_id;
+  // disable button
+  btn.disabled = true;
 
-  // SHOW LOADING ONLY
   document.getElementById("resultSection").style.display = "block";
   document.getElementById("tabs").style.display = "none";
-  document.getElementById("loadingText").innerText = "Processing... please wait.";
-
+  document.getElementById("loadingText").innerText = "Submitting job...";
   document.getElementById("reviewSection").innerHTML = "";
-  
-  pollUntilDone(jobId);
-}
 
-async function pollUntilDone(jobId) {
-  const interval = setInterval(async () => {
+  try {
+    const res = await fetch(`${API_URL}/analyze`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        url,
+        device_id: deviceId
+      })
+    });
 
-    const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
     const data = await res.json();
 
-    if (data.status === "done") {
-      clearInterval(interval);
-
-      const result = data.result;
-
-      // SHOW RESULTS NOW
-      document.getElementById("loadingText").innerText = "";
-      document.getElementById("tabs").style.display = "block";
-
-      document.getElementById("summaryText").innerText = result.summary;
-
-      renderCharts(result);
-      renderReviewTable(result.reviews);
-
-      showTab("summary");
-      await loadHistory();
+    if (!data.job_id) {
+      throw new Error("No job_id returned");
     }
 
-    else if (data.status === "error") {
-      clearInterval(interval);
-      document.getElementById("loadingText").innerText = "Error processing request.";
-    }
+    document.getElementById("loadingText").innerText =
+      `Queued (Position: ${data.queue_position}) - Est wait: ${Math.round(data.estimated_wait_seconds/60)} min`;
 
+    pollUntilDone(data.job_id, btn);
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("loadingText").innerText = "Failed to start analysis.";
+    btn.disabled = false;
+  }
+}
+
+function pollUntilDone(jobId, btn) {
+  if (currentInterval) clearInterval(currentInterval);
+
+  currentInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
+      const data = await res.json();
+
+      // update queue info
+      if (data.status === "queued" || data.status === "processing") {
+        document.getElementById("loadingText").innerText =
+          `${data.status.toUpperCase()} | Queue: ${data.queue_position} | Est: ${Math.round(data.estimated_wait_seconds/60)} min`;
+      }
+
+      if (data.status === "done") {
+        clearInterval(currentInterval);
+
+        const result = data.result;
+
+        if (!result) {
+          throw new Error("Result is empty");
+        }
+
+        document.getElementById("loadingText").innerText = "";
+        document.getElementById("tabs").style.display = "block";
+
+        document.getElementById("summaryText").innerText = result.summary;
+
+        renderCharts(result);
+        renderReviewTable(result.reviews);
+
+        showTab("summary");
+
+        btn.disabled = false;
+      }
+
+      if (data.status === "error") {
+        clearInterval(currentInterval);
+        document.getElementById("loadingText").innerText = "Error processing request.";
+        btn.disabled = false;
+      }
+
+    } catch (err) {
+      console.error("Polling error:", err);
+      clearInterval(currentInterval);
+      document.getElementById("loadingText").innerText = "Connection error.";
+      btn.disabled = false;
+    }
   }, 3000);
 }
 
 function renderCharts(data) {
   const sentiment = data.sentiment_distribution || {};
+
   const sData = [
     sentiment["Positive"] || 0,
     sentiment["Negative"] || 0,
@@ -209,7 +239,7 @@ function renderCharts(data) {
 
 function renderReviewTable(reviews) {
   const container = document.getElementById("reviewSection");
-  
+
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
@@ -241,41 +271,7 @@ function renderReviewTable(reviews) {
   });
 
   html += "</tbody></table>";
-
   container.innerHTML = html;
-}
-
-async function loadHistory() {
-  const container = document.getElementById("history");
-  container.innerHTML = "Loading...";
-
-  try {
-    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
-    const data = await res.json();
-
-    if (!data.length) {
-      container.innerHTML = "No history found.";
-      return;
-    }
-
-    container.innerHTML = "<h3>History</h3>";
-
-    data.forEach(item => {
-      const div = document.createElement("div");
-      div.className = "card";
-
-      div.innerHTML = `
-        <b>${item.product_name || "Unknown Product"}</b><br>
-        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
-        <small>${new Date(item.timestamp).toLocaleString()}</small>
-      `;
-
-      container.appendChild(div);
-    });
-
-  } catch (err) {
-    container.innerHTML = "Failed to load history.";
-  }
 }
 </script>
 
