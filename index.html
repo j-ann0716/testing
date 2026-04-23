@@ -151,8 +151,6 @@ function goToDetailPage() {
 function goBack() {
   document.getElementById("detailPage").style.display = "none";
   document.getElementById("mainPage").style.display = "block";
-
-  // Optional reset
   document.getElementById("resultSection").style.display = "none";
 }
 
@@ -161,7 +159,7 @@ async function loadHistory() {
   container.innerHTML = "Loading...";
 
   try {
-    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
+    const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
     const data = await res.json();
 
     if (!data.length) {
@@ -184,9 +182,7 @@ async function loadHistory() {
       div.onclick = () => openHistoryItem(item.session_id);
 
       container.appendChild(div);
-      console.log("HISTORY ITEM:", item);
     });
-    
 
   } catch (err) {
     container.innerHTML = "Failed to load history.";
@@ -197,12 +193,11 @@ async function analyze() {
   const url = document.getElementById('url').value;
   const btn = document.getElementById("analyzeBtn");
 
-  // disable button
   btn.disabled = true;
   document.getElementById("loading").style.display = "block";
+  document.getElementById("loading").innerText = "Processing...";
 
   try {
-    // STEP 1: start job
     const res = await fetch(`${API_URL}/analyze`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -212,12 +207,13 @@ async function analyze() {
       })
     });
 
-    const job = await res.json();
+    const data = await res.json();
 
-    // STEP 2: wait until done (THIS replaces your old blocking backend)
-    const data = await waitForResult(job.job_id);
+    if (data.error) {
+      throw new Error(data.error);
+    }
 
-    // STEP 3: render (same as your old app)
+    // ✅ DIRECT RESULT (NO QUEUE)
     document.getElementById("resultSection").style.display = "block";
     document.getElementById("summaryText").innerText = data.summary;
 
@@ -228,45 +224,18 @@ async function analyze() {
     await loadHistory();
 
   } catch (err) {
-    alert("Something went wrong");
+    alert("Error: " + err.message);
     console.error(err);
   }
 
-  // re-enable button
   btn.disabled = false;
   document.getElementById("loading").style.display = "none";
 }
 
-async function waitForResult(jobId) {
-  while (true) {
-    const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
-    const data = await res.json();
-
-    console.log("STATUS:", data);
-
-    if (data.status === "done") {
-      return data.result; // 👈 SAME STRUCTURE AS OLD BACKEND
-    }
-
-    if (data.status === "error") {
-      throw new Error("Processing failed");
-    }
-
-    // optional: show queue info
-    document.getElementById("loading").innerText =
-      `Waiting... Position: ${data.queue_position} | Est: ${data.estimated_wait_seconds}s`;
-
-    await new Promise(r => setTimeout(r, 3000));
-  }
-}
-
 async function openHistoryItem(id) {
-  if (!id) {
-    console.error("Missing session id:", id);
-    return;
-  }
+  if (!id) return;
 
-  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  const res = await fetch(`${API_URL}/history_detail?id=${id}`);
   const data = await res.json();
 
   goToDetailPage();
@@ -278,7 +247,7 @@ async function openHistoryItem(id) {
   link.innerText = data.url;
 
   document.getElementById("summaryTextDetail").innerText = data.summary;
-  
+
   renderCharts(data, "detail");
   renderReviewTable(data.reviews, "detail");
 
@@ -334,7 +303,7 @@ function renderReviewTable(reviews, mode = "main") {
   const container = mode === "detail"
     ? document.getElementById("reviewSectionDetail")
     : document.getElementById("reviewSection");
-  
+
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
