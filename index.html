@@ -1,3 +1,4 @@
+  
 <!DOCTYPE html>
 <html>
 <head>
@@ -19,9 +20,12 @@
       font-size: 16px;
     }
 
-    button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
+    .card {
+      background: #f5f5f5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
     }
 
     .tab {
@@ -43,44 +47,70 @@
     th {
       background: #ddd;
     }
-
-    #loadingText {
-      font-weight: bold;
-      margin-top: 10px;
-    }
   </style>
 </head>
 
 <body>
 
-<h2>Shopee Review Analyzer</h2>
+<div id="mainPage">
+  <h2>Shopee Review Analyzer</h2>
 
-<input id="url" placeholder="Paste Shopee URL">
-<button id="analyzeBtn" onclick="analyze()">Analyze Reviews</button>
+  <input id="url" placeholder="Paste Shopee URL">
+  <button onclick="analyze()">Analyze Reviews</button>
+  
+  <div id="resultSection" style="display:none; margin-top:20px;">
+  
+    <div>
+      <button onclick="showTab('sentiment')">Sentiment</button>
+      <button onclick="showTab('authenticity')">Authenticity</button>
+      <button onclick="showTab('summary')">AI Summary</button>
+    </div>
+  
+    <div id="sentiment" class="tab">
+      <canvas id="sentimentChart"></canvas>
+    </div>
+  
+    <div id="authenticity" class="tab" style="display:none;">
+      <canvas id="authChart"></canvas>
+    </div>
+  
+    <div id="summary" class="tab" style="display:none;">
+      <div id="summaryText"></div>
+    </div>
+  
+    <div id="reviewSection"></div>
+  </div>
+  
+  <button onclick="loadHistory()">View History</button>
+  <div id="history"></div>
+</div>
 
-<div id="resultSection" style="display:none; margin-top:20px;">
+<div id="detailPage" style="display:none;">
+  <button onclick="goBack()">Back</button>
 
-  <div id="tabs" style="display:none;">
-    <button onclick="showTab('sentiment')">Sentiment</button>
-    <button onclick="showTab('authenticity')">Authenticity</button>
-    <button onclick="showTab('summary')">AI Summary</button>
+  <h2 id="detailTitle"></h2>
+  <a id="detailLink" target="_blank"></a>
+
+  <div style="margin-top:20px;">
+    <button onclick="showTab('sentiment','detail')">Sentiment</button>
+    <button onclick="showTab('authenticity','detail')">Authenticity</button>
+    <button onclick="showTab('summary','detail')">AI Summary</button>
   </div>
 
-  <div id="loadingText"></div>
-
-  <div id="sentiment" class="tab">
-    <canvas id="sentimentChart"></canvas>
+  <!-- DETAIL PAGE -->
+  <div id="sentimentDetail" class="tab">
+    <canvas id="sentimentChartDetail"></canvas>
   </div>
-
-  <div id="authenticity" class="tab" style="display:none;">
-    <canvas id="authChart"></canvas>
+  
+  <div id="authenticityDetail" class="tab" style="display:none;">
+    <canvas id="authChartDetail"></canvas>
   </div>
-
-  <div id="summary" class="tab" style="display:none;">
-    <div id="summaryText"></div>
+  
+  <div id="summaryDetail" class="tab" style="display:none;">
+    <div id="summaryTextDetail"></div>
   </div>
-
-  <div id="reviewSection"></div>
+  
+  <div id="reviewSectionDetail"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -95,123 +125,143 @@ if (!deviceId) {
 }
 
 let sentimentChart, authChart;
-let currentInterval = null;
 
-function showTab(tab) {
-  ["sentiment", "authenticity", "summary"].forEach(id => {
-    document.getElementById(id).style.display = "none";
+function showTab(tab, mode = "main") {
+  const prefix = mode === "detail" ? "Detail" : "";
+
+  const tabs = mode === "detail"
+    ? ["sentimentDetail", "authenticityDetail", "summaryDetail"]
+    : ["sentiment", "authenticity", "summary"];
+
+  tabs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
   });
-  document.getElementById(tab).style.display = "block";
+
+  const target = document.getElementById(tab + prefix);
+  if (target) target.style.display = "block";
+}
+
+function goToDetailPage() {
+  document.getElementById("mainPage").style.display = "none";
+  document.getElementById("detailPage").style.display = "block";
+}
+
+function goBack() {
+  document.getElementById("detailPage").style.display = "none";
+  document.getElementById("mainPage").style.display = "block";
+
+  // Optional reset
+  document.getElementById("resultSection").style.display = "none";
+}
+
+async function loadHistory() {
+  const container = document.getElementById("history");
+  container.innerHTML = "Loading...";
+
+  try {
+    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
+    const data = await res.json();
+
+    if (!data.length) {
+      container.innerHTML = "No history found.";
+      return;
+    }
+
+    container.innerHTML = "<h3>History</h3>";
+
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "card";
+
+      div.innerHTML = `
+        <b>${item.product_name || "Unknown Product"}</b><br>
+        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
+        <small>${new Date(item.timestamp).toLocaleString()}</small>
+      `;
+
+      div.onclick = () => openHistoryItem(item.session_id);
+
+      container.appendChild(div);
+      console.log("HISTORY ITEM:", item);
+    });
+    
+
+  } catch (err) {
+    container.innerHTML = "Failed to load history.";
+  }
 }
 
 async function analyze() {
   const url = document.getElementById('url').value;
-  const btn = document.getElementById("analyzeBtn");
 
-  if (!url) {
-    alert("Please enter a URL");
+  const res = await fetch(`${API_URL}/analyze`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      url,
+      device_id: deviceId
+    })
+  });
+
+  const data = await res.json();
+
+  document.getElementById("resultSection").style.display = "block";
+
+  document.getElementById("summaryText").innerText = data.summary;
+  
+  renderCharts(data);
+  renderReviewTable(data.reviews);
+
+  showTab("summary");
+  await loadHistory();
+}
+
+async function openHistoryItem(id) {
+  if (!id) {
+    console.error("Missing session id:", id);
     return;
   }
 
-  // disable button
-  btn.disabled = true;
+  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  const data = await res.json();
 
-  document.getElementById("resultSection").style.display = "block";
-  document.getElementById("tabs").style.display = "none";
-  document.getElementById("loadingText").innerText = "Submitting job...";
-  document.getElementById("reviewSection").innerHTML = "";
+  goToDetailPage();
 
-  try {
-    const res = await fetch(`${API_URL}/analyze`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        url,
-        device_id: deviceId
-      })
-    });
+  document.getElementById("detailTitle").innerText = data.product_name;
 
-    const data = await res.json();
+  const link = document.getElementById("detailLink");
+  link.href = data.url;
+  link.innerText = data.url;
 
-    if (!data.job_id) {
-      throw new Error("No job_id returned");
-    }
+  document.getElementById("summaryTextDetail").innerText = data.summary;
+  
+  renderCharts(data, "detail");
+  renderReviewTable(data.reviews, "detail");
 
-    document.getElementById("loadingText").innerText =
-      `Queued (Position: ${data.queue_position}) - Est wait: ${Math.round(data.estimated_wait_seconds/60)} min`;
-
-    pollUntilDone(data.job_id, btn);
-
-  } catch (err) {
-    console.error(err);
-    document.getElementById("loadingText").innerText = "Failed to start analysis.";
-    btn.disabled = false;
-  }
+  showTab("summary", "detail");
 }
 
-function pollUntilDone(jobId, btn) {
-  if (currentInterval) clearInterval(currentInterval);
+function renderCharts(data, mode = "main") {
 
-  currentInterval = setInterval(async () => {
-    try {
-      const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
-      const data = await res.json();
-
-      // update queue info
-      if (data.status === "queued" || data.status === "processing") {
-        document.getElementById("loadingText").innerText =
-          `${data.status.toUpperCase()} | Queue: ${data.queue_position} | Est: ${Math.round(data.estimated_wait_seconds/60)} min`;
-      }
-
-      if (data.status === "done") {
-        clearInterval(currentInterval);
-
-        const result = data.result;
-
-        if (!result) {
-          throw new Error("Result is empty");
-        }
-
-        document.getElementById("loadingText").innerText = "";
-        document.getElementById("tabs").style.display = "block";
-
-        document.getElementById("summaryText").innerText = result.summary;
-
-        renderCharts(result);
-        renderReviewTable(result.reviews);
-
-        showTab("summary");
-
-        btn.disabled = false;
-      }
-
-      if (data.status === "error") {
-        clearInterval(currentInterval);
-        document.getElementById("loadingText").innerText = "Error processing request.";
-        btn.disabled = false;
-      }
-
-    } catch (err) {
-      console.error("Polling error:", err);
-      clearInterval(currentInterval);
-      document.getElementById("loadingText").innerText = "Connection error.";
-      btn.disabled = false;
-    }
-  }, 3000);
-}
-
-function renderCharts(data) {
   const sentiment = data.sentiment_distribution || {};
-
   const sData = [
     sentiment["Positive"] || 0,
     sentiment["Negative"] || 0,
     sentiment["Neutral/Mixed"] || 0
   ];
 
+  const sentimentCanvas = mode === "detail"
+    ? document.getElementById('sentimentChartDetail')
+    : document.getElementById('sentimentChart');
+
+  const authCanvas = mode === "detail"
+    ? document.getElementById('authChartDetail')
+    : document.getElementById('authChart');
+
   if (sentimentChart) sentimentChart.destroy();
 
-  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
+  sentimentChart = new Chart(sentimentCanvas, {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
@@ -225,7 +275,7 @@ function renderCharts(data) {
 
   if (authChart) authChart.destroy();
 
-  authChart = new Chart(document.getElementById('authChart'), {
+  authChart = new Chart(authCanvas, {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
@@ -237,9 +287,11 @@ function renderCharts(data) {
   });
 }
 
-function renderReviewTable(reviews) {
-  const container = document.getElementById("reviewSection");
-
+function renderReviewTable(reviews, mode = "main") {
+  const container = mode === "detail"
+    ? document.getElementById("reviewSectionDetail")
+    : document.getElementById("reviewSection");
+  
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
@@ -271,9 +323,11 @@ function renderReviewTable(reviews) {
   });
 
   html += "</tbody></table>";
+
   container.innerHTML = html;
 }
 </script>
 
 </body>
 </html>
+
