@@ -42,6 +42,7 @@
     th, td {
       padding: 8px;
       border-bottom: 1px solid #ccc;
+      text-align: left;
     }
 
     th { background: #ddd; }
@@ -60,7 +61,7 @@
   <h2>Shopee Review Analyzer</h2>
 
   <input id="url" placeholder="Paste Shopee URL">
-  <button id="analyzeBtn" onclick="analyze()">Analyze Reviews</button>
+  <button onclick="analyze()" id="analyzeBtn">Analyze Reviews</button>
 
   <div id="queueInfo"></div>
 
@@ -90,6 +91,33 @@
   <div id="history"></div>
 </div>
 
+<div id="detailPage" style="display:none;">
+  <button onclick="goBack()">Back</button>
+
+  <h2 id="detailTitle"></h2>
+  <a id="detailLink" target="_blank"></a>
+
+  <div style="margin-top:20px;">
+    <button onclick="showTab('sentiment','detail')">Sentiment</button>
+    <button onclick="showTab('authenticity','detail')">Authenticity</button>
+    <button onclick="showTab('summary','detail')">AI Summary</button>
+  </div>
+
+  <div id="sentimentDetail" class="tab">
+    <canvas id="sentimentChartDetail"></canvas>
+  </div>
+
+  <div id="authenticityDetail" class="tab" style="display:none;">
+    <canvas id="authChartDetail"></canvas>
+  </div>
+
+  <div id="summaryDetail" class="tab" style="display:none;">
+    <div id="summaryTextDetail"></div>
+  </div>
+
+  <div id="reviewSectionDetail"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
@@ -103,9 +131,6 @@ if (!deviceId) {
 
 let sentimentChart, authChart;
 
-let countdownInterval = null;
-let pollingActive = false;
-
 // =========================
 // ANALYZE
 // =========================
@@ -114,7 +139,7 @@ async function analyze() {
   const btn = document.getElementById("analyzeBtn");
 
   btn.disabled = true;
-  document.getElementById("queueInfo").innerText = "Submitting job...";
+  document.getElementById("queueInfo").innerText = "Sending request...";
 
   const res = await fetch(`${API_URL}/analyze`, {
     method: "POST",
@@ -123,83 +148,100 @@ async function analyze() {
   });
 
   const data = await res.json();
-  const jobId = data.job_id;
 
-  startQueueDisplay(data.queue_position, data.estimated_wait_seconds);
+  document.getElementById("queueInfo").innerText =
+    `You are #${data.queue_position} in queue (~${Math.ceil(data.estimated_wait_seconds/60)} min)`;
 
-  pollingActive = true;
-  pollStatus(jobId);
+  pollStatus(data.job_id);
 }
 
 // =========================
-// POLLING (FIXED)
+// POLLING (IMPORTANT FIX)
 // =========================
 async function pollStatus(jobId) {
-  if (!pollingActive) return;
-
   const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
   const data = await res.json();
 
-  // 🔥 ALWAYS UPDATE QUEUE INFO FROM BACKEND
-  if (data.queue_position > 0 && data.status !== "done") {
-    document.getElementById("queueInfo").innerText =
-      `You are #${data.queue_position} in queue | Est wait: ${Math.ceil(data.estimated_wait_seconds / 60)} min`;
-  }
+  document.getElementById("queueInfo").innerText =
+    `Status: ${data.status} | Queue: ${data.queue_position} | ETA: ${Math.ceil(data.estimated_wait_seconds/60)} min`;
 
   if (data.status === "done") {
-    pollingActive = false;
-
-    clearInterval(countdownInterval);
-
-    document.getElementById("queueInfo").innerText = "✅ Done!";
     document.getElementById("analyzeBtn").disabled = false;
 
-    showResult(data.result);
+    if (data.result) {
+      showResult(data.result);
+    }
+
     return;
   }
 
-  if (data.status === "processing") {
-    document.getElementById("queueInfo").innerText = "🔄 Processing...";
+  if (data.status === "error") {
+    document.getElementById("queueInfo").innerText = "Error occurred";
+    document.getElementById("analyzeBtn").disabled = false;
+    return;
   }
 
   setTimeout(() => pollStatus(jobId), 2000);
 }
 
 // =========================
-// QUEUE TIMER (VISUAL ONLY)
+// HISTORY (FIXED ROUTES)
 // =========================
-function startQueueDisplay(position, seconds) {
-  let remaining = seconds;
+async function loadHistory() {
+  const container = document.getElementById("history");
+  container.innerHTML = "Loading...";
 
-  updateQueueText(position, remaining);
+  try {
+    const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
+    const data = await res.json();
 
-  clearInterval(countdownInterval);
-
-  countdownInterval = setInterval(() => {
-    if (!pollingActive) {
-      clearInterval(countdownInterval);
+    if (!data || data.length === 0) {
+      container.innerHTML = "No history found.";
       return;
     }
 
-    remaining--;
+    container.innerHTML = "<h3>History</h3>";
 
-    if (remaining <= 0) {
-      clearInterval(countdownInterval);
-      document.getElementById("queueInfo").innerText =
-        "🔄 Almost done... finalizing result";
-      return;
-    }
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "card";
 
-    updateQueueText(position, remaining);
-  }, 1000);
+      div.innerHTML = `
+        <b>${item.product_name || "Unknown"}</b><br>
+        Type: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
+        <small>${new Date(item.timestamp).toLocaleString()}</small>
+      `;
+
+      div.onclick = () => openHistoryItem(item.analysis_id);
+      container.appendChild(div);
+    });
+
+  } catch (err) {
+    container.innerHTML = "Failed to load history.";
+  }
 }
 
-function updateQueueText(position, seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+// =========================
+// HISTORY DETAIL (FIXED)
+// =========================
+async function openHistoryItem(id) {
+  const res = await fetch(`${API_URL}/history_detail?id=${id}`);
+  const data = await res.json();
 
-  document.getElementById("queueInfo").innerText =
-    `You are #${position} in queue | Estimated wait: ${mins}m ${secs}s`;
+  goToDetailPage();
+
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.url || "#";
+  link.innerText = data.url || "";
+
+  document.getElementById("summaryTextDetail").innerText = data.summary;
+
+  renderCharts(data, "detail");
+  renderReviewTable(data.reviews, "detail");
+
+  showTab("summary", "detail");
 }
 
 // =========================
@@ -218,7 +260,7 @@ function showResult(data) {
 // =========================
 // CHARTS
 // =========================
-function renderCharts(data) {
+function renderCharts(data, mode = "main") {
   const sentiment = data.sentiment_distribution || {};
 
   const sData = [
@@ -227,9 +269,18 @@ function renderCharts(data) {
     sentiment["Neutral/Mixed"] || 0
   ];
 
-  if (sentimentChart) sentimentChart.destroy();
+  const sentimentCanvas = mode === "detail"
+    ? document.getElementById('sentimentChartDetail')
+    : document.getElementById('sentimentChart');
 
-  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
+  const authCanvas = mode === "detail"
+    ? document.getElementById('authChartDetail')
+    : document.getElementById('authChart');
+
+  if (sentimentChart) sentimentChart.destroy();
+  if (authChart) authChart.destroy();
+
+  sentimentChart = new Chart(sentimentCanvas, {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
@@ -239,18 +290,13 @@ function renderCharts(data) {
 
   const spam = data.spam_count || 0;
   const inauth = data.inauthentic_count || 0;
-  const authentic = data.total_reviews - spam - inauth;
+  const authentic = (data.total_reviews || 0) - spam - inauth;
 
-  if (authChart) authChart.destroy();
-
-  authChart = new Chart(document.getElementById('authChart'), {
+  authChart = new Chart(authCanvas, {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
-      datasets: [{
-        label: 'Review Count',
-        data: [spam, inauth, authentic]
-      }]
+      datasets: [{ data: [spam, inauth, authentic] }]
     }
   });
 }
@@ -258,27 +304,19 @@ function renderCharts(data) {
 // =========================
 // TABLE
 // =========================
-function renderReviewTable(reviews) {
-  const container = document.getElementById("reviewSection");
+function renderReviewTable(reviews, mode = "main") {
+  const container = mode === "detail"
+    ? document.getElementById("reviewSectionDetail")
+    : document.getElementById("reviewSection");
 
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
   }
 
-  let html = `
-    <h3>Review Details</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Review</th>
-          <th>Rate</th>
-          <th>Sentiment</th>
-          <th>Authenticity</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
+  let html = `<h3>Review Details</h3><table><tr>
+    <th>Review</th><th>Rate</th><th>Sentiment</th><th>Auth</th>
+  </tr>`;
 
   reviews.forEach(r => {
     html += `
@@ -287,22 +325,36 @@ function renderReviewTable(reviews) {
         <td>${r.rating || "-"}</td>
         <td>${r.sentiment || "-"}</td>
         <td>${r.inauthentic ? "Inauthentic" : "Authentic"}</td>
-      </tr>
-    `;
+      </tr>`;
   });
 
-  html += "</tbody></table>";
+  html += "</table>";
   container.innerHTML = html;
 }
 
 // =========================
-// TAB
+// UI
 // =========================
-function showTab(tab) {
-  ["sentiment", "authenticity", "summary"].forEach(id => {
-    document.getElementById(id).style.display = "none";
+function showTab(tab, mode = "main") {
+  const suffix = mode === "detail" ? "Detail" : "";
+
+  ["sentiment","authenticity","summary"].forEach(t => {
+    const el = document.getElementById(t + suffix);
+    if (el) el.style.display = "none";
   });
-  document.getElementById(tab).style.display = "block";
+
+  document.getElementById(tab + suffix).style.display = "block";
+}
+
+function goToDetailPage() {
+  document.getElementById("mainPage").style.display = "none";
+  document.getElementById("detailPage").style.display = "block";
+}
+
+function goBack() {
+  document.getElementById("detailPage").style.display = "none";
+  document.getElementById("mainPage").style.display = "block";
+  document.getElementById("resultSection").style.display = "none";
 }
 </script>
 
