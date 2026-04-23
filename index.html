@@ -204,16 +204,15 @@ async function analyze() {
   });
 
   const data = await res.json();
-
   const jobId = data.job_id;
 
   document.getElementById("resultSection").style.display = "block";
-  document.getElementById("summaryText").innerText =
-    `Processing... Estimated wait: ${Math.ceil(data.estimated_wait_seconds / 60)} min`;
+  document.getElementById("summaryText").innerText = "Processing... please wait.";
 
-  pollStatus(jobId);
+  pollUntilDone(jobId);
 }
-async function pollStatus(jobId) {
+  
+async function pollUntilDone(jobId) {
   const interval = setInterval(async () => {
 
     const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
@@ -232,20 +231,15 @@ async function pollStatus(jobId) {
       await loadHistory();
     }
 
-    else if (data.status === "processing") {
-      document.getElementById("summaryText").innerText =
-        `Processing... Almost done`;
+    else if (data.status === "error") {
+      clearInterval(interval);
+      document.getElementById("summaryText").innerText = "Error processing request.";
     }
 
-    else {
-      // queued
-      const seconds = data.estimated_wait_seconds;
-      document.getElementById("summaryText").innerText =
-        `Waiting... ~${Math.ceil(seconds / 60)} min remaining`;
-    }
-
-  }, 3000); // check every 3 seconds
+    // otherwise: still queued/processing → do nothing
+  }, 3000);
 }
+  
 async function openHistoryItem(id) {
   if (!id) {
     console.error("Missing session id:", id);
