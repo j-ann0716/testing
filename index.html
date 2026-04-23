@@ -56,7 +56,30 @@
 
   <input id="url" placeholder="Paste Shopee URL">
   <button onclick="analyze()">Analyze Reviews</button>
-
+  
+  <div id="resultSection" style="display:none; margin-top:20px;">
+  
+    <div>
+      <button onclick="showTab('sentiment')">Sentiment</button>
+      <button onclick="showTab('authenticity')">Authenticity</button>
+      <button onclick="showTab('summary')">AI Summary</button>
+    </div>
+  
+    <div id="sentiment" class="tab">
+      <canvas id="sentimentChart"></canvas>
+    </div>
+  
+    <div id="authenticity" class="tab" style="display:none;">
+      <canvas id="authChart"></canvas>
+    </div>
+  
+    <div id="summary" class="tab" style="display:none;">
+      <div id="summaryText"></div>
+    </div>
+  
+    <div id="reviewSection"></div>
+  </div>
+  
   <button onclick="loadHistory()">View History</button>
   <div id="history"></div>
 </div>
@@ -68,24 +91,25 @@
   <a id="detailLink" target="_blank"></a>
 
   <div style="margin-top:20px;">
-    <button onclick="showTab('sentiment')">Sentiment</button>
-    <button onclick="showTab('authenticity')">Authenticity</button>
-    <button onclick="showTab('summary')">AI Summary</button>
+    <button onclick="showTab('sentiment','detail')">Sentiment</button>
+    <button onclick="showTab('authenticity','detail')">Authenticity</button>
+    <button onclick="showTab('summary','detail')">AI Summary</button>
   </div>
 
-  <div id="sentiment" class="tab">
-    <canvas id="sentimentChart"></canvas>
+  <!-- DETAIL PAGE -->
+  <div id="sentimentDetail" class="tab">
+    <canvas id="sentimentChartDetail"></canvas>
   </div>
-
-  <div id="authenticity" class="tab" style="display:none;">
-    <canvas id="authChart"></canvas>
+  
+  <div id="authenticityDetail" class="tab" style="display:none;">
+    <canvas id="authChartDetail"></canvas>
   </div>
-
-  <div id="summary" class="tab" style="display:none;">
-    <div id="summaryText"></div>
+  
+  <div id="summaryDetail" class="tab" style="display:none;">
+    <div id="summaryTextDetail"></div>
   </div>
-
-  <div id="reviewSection"></div>
+  
+  <div id="reviewSectionDetail"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -101,9 +125,20 @@ if (!deviceId) {
 
 let sentimentChart, authChart;
 
-function showTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
-  document.getElementById(tab).style.display = 'block';
+function showTab(tab, mode = "main") {
+  const prefix = mode === "detail" ? "Detail" : "";
+
+  const tabs = mode === "detail"
+    ? ["sentimentDetail", "authenticityDetail", "summaryDetail"]
+    : ["sentiment", "authenticity", "summary"];
+
+  tabs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+
+  const target = document.getElementById(tab + prefix);
+  if (target) target.style.display = "block";
 }
 
 function goToDetailPage() {
@@ -114,6 +149,9 @@ function goToDetailPage() {
 function goBack() {
   document.getElementById("detailPage").style.display = "none";
   document.getElementById("mainPage").style.display = "block";
+
+  // Optional reset
+  document.getElementById("resultSection").style.display = "none";
 }
 
 async function loadHistory() {
@@ -167,13 +205,7 @@ async function analyze() {
 
   const data = await res.json();
 
-  goToDetailPage();
-
-  document.getElementById("detailTitle").innerText = data.product_name;
-
-  const link = document.getElementById("detailLink");
-  link.href = data.final_url;
-  link.innerText = data.final_url;
+  document.getElementById("resultSection").style.display = "block";
 
   document.getElementById("summaryText").innerText = data.summary;
   
@@ -201,15 +233,16 @@ async function openHistoryItem(id) {
   link.href = data.url;
   link.innerText = data.url;
 
-  document.getElementById("summaryText").innerText = data.summary;
+  document.getElementById("summaryTextDetail").innerText = data.summary;
+  
+  renderCharts(data, "detail");
+  renderReviewTable(data.reviews, "detail");
 
-  renderCharts(data);
-  renderReviewTable(data.reviews);
-
-  showTab("summary");
+  showTab("summary", "detail");
 }
 
-function renderCharts(data) {
+function renderCharts(data, mode = "main") {
+
   const sentiment = data.sentiment_distribution || {};
   const sData = [
     sentiment["Positive"] || 0,
@@ -217,15 +250,21 @@ function renderCharts(data) {
     sentiment["Neutral/Mixed"] || 0
   ];
 
+  const sentimentCanvas = mode === "detail"
+    ? document.getElementById('sentimentChartDetail')
+    : document.getElementById('sentimentChart');
+
+  const authCanvas = mode === "detail"
+    ? document.getElementById('authChartDetail')
+    : document.getElementById('authChart');
+
   if (sentimentChart) sentimentChart.destroy();
 
-  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
+  sentimentChart = new Chart(sentimentCanvas, {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
-      datasets: [{
-        data: sData
-      }]
+      datasets: [{ data: sData }]
     }
   });
 
@@ -235,7 +274,7 @@ function renderCharts(data) {
 
   if (authChart) authChart.destroy();
 
-  authChart = new Chart(document.getElementById('authChart'), {
+  authChart = new Chart(authCanvas, {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
@@ -247,9 +286,11 @@ function renderCharts(data) {
   });
 }
 
-function renderReviewTable(reviews) {
-  const container = document.getElementById("reviewSection");
-
+function renderReviewTable(reviews, mode = "main") {
+  const container = mode === "detail"
+    ? document.getElementById("reviewSectionDetail")
+    : document.getElementById("reviewSection");
+  
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
