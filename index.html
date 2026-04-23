@@ -46,6 +46,11 @@
     th {
       background: #ddd;
     }
+
+    #loadingText {
+      font-weight: bold;
+      margin-top: 10px;
+    }
   </style>
 </head>
 
@@ -59,11 +64,15 @@
   
   <div id="resultSection" style="display:none; margin-top:20px;">
   
-    <div>
+    <!-- HIDDEN UNTIL DONE -->
+    <div id="tabs" style="display:none;">
       <button onclick="showTab('sentiment')">Sentiment</button>
       <button onclick="showTab('authenticity')">Authenticity</button>
       <button onclick="showTab('summary')">AI Summary</button>
     </div>
+
+    <!-- LOADING STATE -->
+    <div id="loadingText"></div>
   
     <div id="sentiment" class="tab">
       <canvas id="sentimentChart"></canvas>
@@ -84,34 +93,6 @@
   <div id="history"></div>
 </div>
 
-<div id="detailPage" style="display:none;">
-  <button onclick="goBack()">Back</button>
-
-  <h2 id="detailTitle"></h2>
-  <a id="detailLink" target="_blank"></a>
-
-  <div style="margin-top:20px;">
-    <button onclick="showTab('sentiment','detail')">Sentiment</button>
-    <button onclick="showTab('authenticity','detail')">Authenticity</button>
-    <button onclick="showTab('summary','detail')">AI Summary</button>
-  </div>
-
-  <!-- DETAIL PAGE -->
-  <div id="sentimentDetail" class="tab">
-    <canvas id="sentimentChartDetail"></canvas>
-  </div>
-  
-  <div id="authenticityDetail" class="tab" style="display:none;">
-    <canvas id="authChartDetail"></canvas>
-  </div>
-  
-  <div id="summaryDetail" class="tab" style="display:none;">
-    <div id="summaryTextDetail"></div>
-  </div>
-  
-  <div id="reviewSectionDetail"></div>
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
@@ -125,70 +106,12 @@ if (!deviceId) {
 
 let sentimentChart, authChart;
 
-function showTab(tab, mode = "main") {
-  const prefix = mode === "detail" ? "Detail" : "";
-
-  const tabs = mode === "detail"
-    ? ["sentimentDetail", "authenticityDetail", "summaryDetail"]
-    : ["sentiment", "authenticity", "summary"];
-
-  tabs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
+function showTab(tab) {
+  ["sentiment", "authenticity", "summary"].forEach(id => {
+    document.getElementById(id).style.display = "none";
   });
 
-  const target = document.getElementById(tab + prefix);
-  if (target) target.style.display = "block";
-}
-
-function goToDetailPage() {
-  document.getElementById("mainPage").style.display = "none";
-  document.getElementById("detailPage").style.display = "block";
-}
-
-function goBack() {
-  document.getElementById("detailPage").style.display = "none";
-  document.getElementById("mainPage").style.display = "block";
-
-  // Optional reset
-  document.getElementById("resultSection").style.display = "none";
-}
-
-async function loadHistory() {
-  const container = document.getElementById("history");
-  container.innerHTML = "Loading...";
-
-  try {
-    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
-    const data = await res.json();
-
-    if (!data.length) {
-      container.innerHTML = "No history found.";
-      return;
-    }
-
-    container.innerHTML = "<h3>History</h3>";
-
-    data.forEach(item => {
-      const div = document.createElement("div");
-      div.className = "card";
-
-      div.innerHTML = `
-        <b>${item.product_name || "Unknown Product"}</b><br>
-        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
-        <small>${new Date(item.timestamp).toLocaleString()}</small>
-      `;
-
-      div.onclick = () => openHistoryItem(item.session_id);
-
-      container.appendChild(div);
-      console.log("HISTORY ITEM:", item);
-    });
-    
-
-  } catch (err) {
-    container.innerHTML = "Failed to load history.";
-  }
+  document.getElementById(tab).style.display = "block";
 }
 
 async function analyze() {
@@ -204,45 +127,51 @@ async function analyze() {
   });
 
   const data = await res.json();
+  const jobId = data.job_id;
 
+  // SHOW LOADING ONLY
   document.getElementById("resultSection").style.display = "block";
+  document.getElementById("tabs").style.display = "none";
+  document.getElementById("loadingText").innerText = "Processing... please wait.";
 
-  document.getElementById("summaryText").innerText = data.summary;
+  document.getElementById("reviewSection").innerHTML = "";
   
-  renderCharts(data);
-  renderReviewTable(data.reviews);
-
-  showTab("summary");
-  await loadHistory();
+  pollUntilDone(jobId);
 }
 
-async function openHistoryItem(id) {
-  if (!id) {
-    console.error("Missing session id:", id);
-    return;
-  }
+async function pollUntilDone(jobId) {
+  const interval = setInterval(async () => {
 
-  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
-  const data = await res.json();
+    const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
+    const data = await res.json();
 
-  goToDetailPage();
+    if (data.status === "done") {
+      clearInterval(interval);
 
-  document.getElementById("detailTitle").innerText = data.product_name;
+      const result = data.result;
 
-  const link = document.getElementById("detailLink");
-  link.href = data.url;
-  link.innerText = data.url;
+      // SHOW RESULTS NOW
+      document.getElementById("loadingText").innerText = "";
+      document.getElementById("tabs").style.display = "block";
 
-  document.getElementById("summaryTextDetail").innerText = data.summary;
-  
-  renderCharts(data, "detail");
-  renderReviewTable(data.reviews, "detail");
+      document.getElementById("summaryText").innerText = result.summary;
 
-  showTab("summary", "detail");
+      renderCharts(result);
+      renderReviewTable(result.reviews);
+
+      showTab("summary");
+      await loadHistory();
+    }
+
+    else if (data.status === "error") {
+      clearInterval(interval);
+      document.getElementById("loadingText").innerText = "Error processing request.";
+    }
+
+  }, 3000);
 }
 
-function renderCharts(data, mode = "main") {
-
+function renderCharts(data) {
   const sentiment = data.sentiment_distribution || {};
   const sData = [
     sentiment["Positive"] || 0,
@@ -250,17 +179,9 @@ function renderCharts(data, mode = "main") {
     sentiment["Neutral/Mixed"] || 0
   ];
 
-  const sentimentCanvas = mode === "detail"
-    ? document.getElementById('sentimentChartDetail')
-    : document.getElementById('sentimentChart');
-
-  const authCanvas = mode === "detail"
-    ? document.getElementById('authChartDetail')
-    : document.getElementById('authChart');
-
   if (sentimentChart) sentimentChart.destroy();
 
-  sentimentChart = new Chart(sentimentCanvas, {
+  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
@@ -274,7 +195,7 @@ function renderCharts(data, mode = "main") {
 
   if (authChart) authChart.destroy();
 
-  authChart = new Chart(authCanvas, {
+  authChart = new Chart(document.getElementById('authChart'), {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
@@ -286,10 +207,8 @@ function renderCharts(data, mode = "main") {
   });
 }
 
-function renderReviewTable(reviews, mode = "main") {
-  const container = mode === "detail"
-    ? document.getElementById("reviewSectionDetail")
-    : document.getElementById("reviewSection");
+function renderReviewTable(reviews) {
+  const container = document.getElementById("reviewSection");
   
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
@@ -324,6 +243,39 @@ function renderReviewTable(reviews, mode = "main") {
   html += "</tbody></table>";
 
   container.innerHTML = html;
+}
+
+async function loadHistory() {
+  const container = document.getElementById("history");
+  container.innerHTML = "Loading...";
+
+  try {
+    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
+    const data = await res.json();
+
+    if (!data.length) {
+      container.innerHTML = "No history found.";
+      return;
+    }
+
+    container.innerHTML = "<h3>History</h3>";
+
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "card";
+
+      div.innerHTML = `
+        <b>${item.product_name || "Unknown Product"}</b><br>
+        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
+        <small>${new Date(item.timestamp).toLocaleString()}</small>
+      `;
+
+      container.appendChild(div);
+    });
+
+  } catch (err) {
+    container.innerHTML = "Failed to load history.";
+  }
 }
 </script>
 
