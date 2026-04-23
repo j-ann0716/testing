@@ -144,8 +144,9 @@ async function loadHistory() {
       div.onclick = () => openHistoryItem(item.session_id);
 
       container.appendChild(div);
+      console.log("HISTORY ITEM:", item);
     });
-    console.log("HISTORY ITEM:", item);
+    
 
   } catch (err) {
     container.innerHTML = "Failed to load history.";
@@ -175,11 +176,12 @@ async function analyze() {
   link.innerText = data.final_url;
 
   document.getElementById("summaryText").innerText = data.summary;
-
+  
   renderCharts(data);
   renderReviewTable(data.reviews);
 
   showTab("summary");
+  await loadHistory();
 }
 
 async function openHistoryItem(id) {
