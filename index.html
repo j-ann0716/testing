@@ -56,30 +56,7 @@
 
   <input id="url" placeholder="Paste Shopee URL">
   <button onclick="analyze()">Analyze Reviews</button>
-  
-  <div id="resultSection" style="display:none; margin-top:20px;">
-  
-    <div>
-      <button onclick="showTab('sentiment')">Sentiment</button>
-      <button onclick="showTab('authenticity')">Authenticity</button>
-      <button onclick="showTab('summary')">AI Summary</button>
-    </div>
-  
-    <div id="sentiment" class="tab">
-      <canvas id="sentimentChart"></canvas>
-    </div>
-  
-    <div id="authenticity" class="tab" style="display:none;">
-      <canvas id="authChart"></canvas>
-    </div>
-  
-    <div id="summary" class="tab" style="display:none;">
-      <div id="summaryText"></div>
-    </div>
-  
-    <div id="reviewSection"></div>
-  </div>
-  
+
   <button onclick="loadHistory()">View History</button>
   <div id="history"></div>
 </div>
@@ -91,25 +68,24 @@
   <a id="detailLink" target="_blank"></a>
 
   <div style="margin-top:20px;">
-    <button onclick="showTab('sentiment','detail')">Sentiment</button>
-    <button onclick="showTab('authenticity','detail')">Authenticity</button>
-    <button onclick="showTab('summary','detail')">AI Summary</button>
+    <button onclick="showTab('sentiment')">Sentiment</button>
+    <button onclick="showTab('authenticity')">Authenticity</button>
+    <button onclick="showTab('summary')">AI Summary</button>
   </div>
 
-  <!-- DETAIL PAGE -->
-  <div id="sentimentDetail" class="tab">
-    <canvas id="sentimentChartDetail"></canvas>
+  <div id="sentiment" class="tab">
+    <canvas id="sentimentChart"></canvas>
   </div>
-  
-  <div id="authenticityDetail" class="tab" style="display:none;">
-    <canvas id="authChartDetail"></canvas>
+
+  <div id="authenticity" class="tab" style="display:none;">
+    <canvas id="authChart"></canvas>
   </div>
-  
-  <div id="summaryDetail" class="tab" style="display:none;">
-    <div id="summaryTextDetail"></div>
+
+  <div id="summary" class="tab" style="display:none;">
+    <div id="summaryText"></div>
   </div>
-  
-  <div id="reviewSectionDetail"></div>
+
+  <div id="reviewSection"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -125,20 +101,9 @@ if (!deviceId) {
 
 let sentimentChart, authChart;
 
-function showTab(tab, mode = "main") {
-  const prefix = mode === "detail" ? "Detail" : "";
-
-  const tabs = mode === "detail"
-    ? ["sentimentDetail", "authenticityDetail", "summaryDetail"]
-    : ["sentiment", "authenticity", "summary"];
-
-  tabs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-
-  const target = document.getElementById(tab + prefix);
-  if (target) target.style.display = "block";
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.getElementById(tab).style.display = 'block';
 }
 
 function goToDetailPage() {
@@ -149,9 +114,6 @@ function goToDetailPage() {
 function goBack() {
   document.getElementById("detailPage").style.display = "none";
   document.getElementById("mainPage").style.display = "block";
-
-  // Optional reset
-  document.getElementById("resultSection").style.display = "none";
 }
 
 async function loadHistory() {
@@ -204,42 +166,24 @@ async function analyze() {
   });
 
   const data = await res.json();
-  const jobId = data.job_id;
 
-  document.getElementById("resultSection").style.display = "block";
-  document.getElementById("summaryText").innerText = "Processing... please wait.";
+  goToDetailPage();
 
-  pollUntilDone(jobId);
-}
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.final_url;
+  link.innerText = data.final_url;
+
+  document.getElementById("summaryText").innerText = data.summary;
   
-async function pollUntilDone(jobId) {
-  const interval = setInterval(async () => {
+  renderCharts(data);
+  renderReviewTable(data.reviews);
 
-    const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
-    const data = await res.json();
-
-    if (data.status === "done") {
-      clearInterval(interval);
-
-      const result = data.result;
-
-      document.getElementById("summaryText").innerText = result.summary;
-
-      renderCharts(result);
-      renderReviewTable(result.reviews);
-
-      await loadHistory();
-    }
-
-    else if (data.status === "error") {
-      clearInterval(interval);
-      document.getElementById("summaryText").innerText = "Error processing request.";
-    }
-
-    // otherwise: still queued/processing → do nothing
-  }, 3000);
+  showTab("summary");
+  await loadHistory();
 }
-  
+
 async function openHistoryItem(id) {
   if (!id) {
     console.error("Missing session id:", id);
@@ -257,16 +201,15 @@ async function openHistoryItem(id) {
   link.href = data.url;
   link.innerText = data.url;
 
-  document.getElementById("summaryTextDetail").innerText = data.summary;
-  
-  renderCharts(data, "detail");
-  renderReviewTable(data.reviews, "detail");
+  document.getElementById("summaryText").innerText = data.summary;
 
-  showTab("summary", "detail");
+  renderCharts(data);
+  renderReviewTable(data.reviews);
+
+  showTab("summary");
 }
 
-function renderCharts(data, mode = "main") {
-
+function renderCharts(data) {
   const sentiment = data.sentiment_distribution || {};
   const sData = [
     sentiment["Positive"] || 0,
@@ -274,21 +217,15 @@ function renderCharts(data, mode = "main") {
     sentiment["Neutral/Mixed"] || 0
   ];
 
-  const sentimentCanvas = mode === "detail"
-    ? document.getElementById('sentimentChartDetail')
-    : document.getElementById('sentimentChart');
-
-  const authCanvas = mode === "detail"
-    ? document.getElementById('authChartDetail')
-    : document.getElementById('authChart');
-
   if (sentimentChart) sentimentChart.destroy();
 
-  sentimentChart = new Chart(sentimentCanvas, {
+  sentimentChart = new Chart(document.getElementById('sentimentChart'), {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
-      datasets: [{ data: sData }]
+      datasets: [{
+        data: sData
+      }]
     }
   });
 
@@ -298,7 +235,7 @@ function renderCharts(data, mode = "main") {
 
   if (authChart) authChart.destroy();
 
-  authChart = new Chart(authCanvas, {
+  authChart = new Chart(document.getElementById('authChart'), {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
@@ -310,11 +247,9 @@ function renderCharts(data, mode = "main") {
   });
 }
 
-function renderReviewTable(reviews, mode = "main") {
-  const container = mode === "detail"
-    ? document.getElementById("reviewSectionDetail")
-    : document.getElementById("reviewSection");
-  
+function renderReviewTable(reviews) {
+  const container = document.getElementById("reviewSection");
+
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
