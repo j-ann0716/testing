@@ -27,7 +27,9 @@
       cursor: pointer;
     }
 
-    .tab { margin-top: 15px; }
+    .tab {
+      margin-top: 15px;
+    }
 
     table {
       width: 100%;
@@ -41,11 +43,8 @@
       text-align: left;
     }
 
-    th { background: #ddd; }
-
-    #queueInfo {
-      font-weight: bold;
-      margin-top: 10px;
+    th {
+      background: #ddd;
     }
   </style>
 </head>
@@ -57,36 +56,34 @@
 
   <input id="url" placeholder="Paste Shopee URL">
   <button onclick="analyze()">Analyze Reviews</button>
-
-  <div id="queueInfo"></div>
-
+  
   <div id="resultSection" style="display:none; margin-top:20px;">
+  
     <div>
       <button onclick="showTab('sentiment')">Sentiment</button>
       <button onclick="showTab('authenticity')">Authenticity</button>
       <button onclick="showTab('summary')">AI Summary</button>
     </div>
-
+  
     <div id="sentiment" class="tab">
       <canvas id="sentimentChart"></canvas>
     </div>
-
+  
     <div id="authenticity" class="tab" style="display:none;">
       <canvas id="authChart"></canvas>
     </div>
-
+  
     <div id="summary" class="tab" style="display:none;">
       <div id="summaryText"></div>
     </div>
-
+  
     <div id="reviewSection"></div>
   </div>
-
+  
   <button onclick="loadHistory()">View History</button>
   <div id="history"></div>
 </div>
 
-<!-- DETAIL PAGE -->
 <div id="detailPage" style="display:none;">
   <button onclick="goBack()">Back</button>
 
@@ -99,18 +96,19 @@
     <button onclick="showTab('summary','detail')">AI Summary</button>
   </div>
 
+  <!-- DETAIL PAGE -->
   <div id="sentimentDetail" class="tab">
     <canvas id="sentimentChartDetail"></canvas>
   </div>
-
+  
   <div id="authenticityDetail" class="tab" style="display:none;">
     <canvas id="authChartDetail"></canvas>
   </div>
-
+  
   <div id="summaryDetail" class="tab" style="display:none;">
     <div id="summaryTextDetail"></div>
   </div>
-
+  
   <div id="reviewSectionDetail"></div>
 </div>
 
@@ -127,43 +125,44 @@ if (!deviceId) {
 
 let sentimentChart, authChart;
 
-// =========================
-// ANALYZE
-// =========================
-async function analyze() {
-  const url = document.getElementById('url').value;
+function showTab(tab, mode = "main") {
+  const prefix = mode === "detail" ? "Detail" : "";
 
-  const res = await fetch(`${API_URL}/analyze`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ url, device_id: deviceId })
+  const tabs = mode === "detail"
+    ? ["sentimentDetail", "authenticityDetail", "summaryDetail"]
+    : ["sentiment", "authenticity", "summary"];
+
+  tabs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
   });
 
-  const data = await res.json();
-
-  document.getElementById("resultSection").style.display = "block";
-  document.getElementById("summaryText").innerText = data.summary;
-
-  renderCharts(data);
-  renderReviewTable(data.reviews);
-
-  showTab("summary");
-
-  await loadHistory(); // refresh history after analyze
+  const target = document.getElementById(tab + prefix);
+  if (target) target.style.display = "block";
 }
 
-// =========================
-// HISTORY (FIXED)
-// =========================
+function goToDetailPage() {
+  document.getElementById("mainPage").style.display = "none";
+  document.getElementById("detailPage").style.display = "block";
+}
+
+function goBack() {
+  document.getElementById("detailPage").style.display = "none";
+  document.getElementById("mainPage").style.display = "block";
+
+  // Optional reset
+  document.getElementById("resultSection").style.display = "none";
+}
+
 async function loadHistory() {
   const container = document.getElementById("history");
   container.innerHTML = "Loading...";
 
   try {
-    const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
+    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
     const data = await res.json();
 
-    if (!data || data.length === 0) {
+    if (!data.length) {
       container.innerHTML = "No history found.";
       return;
     }
@@ -176,55 +175,75 @@ async function loadHistory() {
 
       div.innerHTML = `
         <b>${item.product_name || "Unknown Product"}</b><br>
-        Type: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
-        <small>${item.timestamp}</small>
+        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
+        <small>${new Date(item.timestamp).toLocaleString()}</small>
       `;
 
-      div.onclick = () => openHistoryItem(item.analysis_id);
+      div.onclick = () => openHistoryItem(item.session_id);
 
       container.appendChild(div);
+      console.log("HISTORY ITEM:", item);
     });
+    
 
   } catch (err) {
-    console.error(err);
     container.innerHTML = "Failed to load history.";
   }
 }
 
-// =========================
-// DETAIL VIEW (FIXED)
-// =========================
-async function openHistoryItem(id) {
-  try {
-    const res = await fetch(`${API_URL}/history_detail?id=${id}`);
-    const data = await res.json();
+async function analyze() {
+  const url = document.getElementById('url').value;
 
-    document.getElementById("mainPage").style.display = "none";
-    document.getElementById("detailPage").style.display = "block";
+  const res = await fetch(`${API_URL}/analyze`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      url,
+      device_id: deviceId
+    })
+  });
 
-    document.getElementById("detailTitle").innerText = data.product_name || "";
-    document.getElementById("detailLink").href = data.url || "";
-    document.getElementById("detailLink").innerText = data.url || "";
+  const data = await res.json();
 
-    document.getElementById("summaryTextDetail").innerText = data.summary || "";
+  document.getElementById("resultSection").style.display = "block";
 
-    renderCharts(data, "detail");
-    renderReviewTable(data.reviews, "detail");
+  document.getElementById("summaryText").innerText = data.summary;
+  
+  renderCharts(data);
+  renderReviewTable(data.reviews);
 
-    showTab("summary", "detail");
-
-  } catch (err) {
-    console.error(err);
-    alert("Failed to load detail");
-  }
+  showTab("summary");
+  await loadHistory();
 }
 
-// =========================
-// CHARTS
-// =========================
-function renderCharts(data, mode = "main") {
-  const sentiment = data.sentiment_distribution || {};
+async function openHistoryItem(id) {
+  if (!id) {
+    console.error("Missing session id:", id);
+    return;
+  }
 
+  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  const data = await res.json();
+
+  goToDetailPage();
+
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.url;
+  link.innerText = data.url;
+
+  document.getElementById("summaryTextDetail").innerText = data.summary;
+  
+  renderCharts(data, "detail");
+  renderReviewTable(data.reviews, "detail");
+
+  showTab("summary", "detail");
+}
+
+function renderCharts(data, mode = "main") {
+
+  const sentiment = data.sentiment_distribution || {};
   const sData = [
     sentiment["Positive"] || 0,
     sentiment["Negative"] || 0,
@@ -239,10 +258,9 @@ function renderCharts(data, mode = "main") {
     ? document.getElementById('authChartDetail')
     : document.getElementById('authChart');
 
-  if (mode === "main" && sentimentChart) sentimentChart.destroy();
-  if (mode === "detail" && sentimentChart) sentimentChart.destroy();
+  if (sentimentChart) sentimentChart.destroy();
 
-  new Chart(sentimentCanvas, {
+  sentimentChart = new Chart(sentimentCanvas, {
     type: 'pie',
     data: {
       labels: ['Positive', 'Negative', 'Neutral/Mixed'],
@@ -252,12 +270,11 @@ function renderCharts(data, mode = "main") {
 
   const spam = data.spam_count || 0;
   const inauth = data.inauthentic_count || 0;
-  const authentic = (data.total_reviews || 0) - spam - inauth;
+  const authentic = data.total_reviews - spam - inauth;
 
-  if (mode === "main" && authChart) authChart.destroy();
-  if (mode === "detail" && authChart) authChart.destroy();
+  if (authChart) authChart.destroy();
 
-  new Chart(authCanvas, {
+  authChart = new Chart(authCanvas, {
     type: 'bar',
     data: {
       labels: ['Spam', 'Inauthentic', 'Authentic'],
@@ -269,14 +286,11 @@ function renderCharts(data, mode = "main") {
   });
 }
 
-// =========================
-// TABLE
-// =========================
 function renderReviewTable(reviews, mode = "main") {
   const container = mode === "detail"
     ? document.getElementById("reviewSectionDetail")
     : document.getElementById("reviewSection");
-
+  
   if (!reviews || reviews.length === 0) {
     container.innerHTML = "No review data.";
     return;
@@ -308,27 +322,8 @@ function renderReviewTable(reviews, mode = "main") {
   });
 
   html += "</tbody></table>";
+
   container.innerHTML = html;
-}
-
-// =========================
-// UI HELPERS
-// =========================
-function showTab(tab, mode = "main") {
-  const suffix = mode === "detail" ? "Detail" : "";
-
-  ["sentiment", "authenticity", "summary"].forEach(t => {
-    const el = document.getElementById(t + suffix);
-    if (el) el.style.display = "none";
-  });
-
-  const target = document.getElementById(tab + suffix);
-  if (target) target.style.display = "block";
-}
-
-function goBack() {
-  document.getElementById("detailPage").style.display = "none";
-  document.getElementById("mainPage").style.display = "block";
 }
 </script>
 
