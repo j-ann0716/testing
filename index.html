@@ -159,7 +159,7 @@ async function loadHistory() {
   container.innerHTML = "Loading...";
 
   try {
-    const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
+    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
     const data = await res.json();
 
     if (!data.length) {
@@ -182,13 +182,40 @@ async function loadHistory() {
       div.onclick = () => openHistoryItem(item.session_id);
 
       container.appendChild(div);
+      console.log("HISTORY ITEM:", item);
     });
+    
 
   } catch (err) {
     container.innerHTML = "Failed to load history.";
   }
 }
 
+async function openHistoryItem(id) {
+  if (!id) {
+    console.error("Missing session id:", id);
+    return;
+  }
+
+  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  const data = await res.json();
+
+  goToDetailPage();
+
+  document.getElementById("detailTitle").innerText = data.product_name;
+
+  const link = document.getElementById("detailLink");
+  link.href = data.url;
+  link.innerText = data.url;
+
+  document.getElementById("summaryTextDetail").innerText = data.summary;
+  
+  renderCharts(data, "detail");
+  renderReviewTable(data.reviews, "detail");
+
+  showTab("summary", "detail");
+}
+  
 async function analyze() {
   const url = document.getElementById('url').value;
   const btn = document.getElementById("analyzeBtn");
@@ -230,28 +257,6 @@ async function analyze() {
 
   btn.disabled = false;
   document.getElementById("loading").style.display = "none";
-}
-
-async function openHistoryItem(id) {
-  if (!id) return;
-
-  const res = await fetch(`${API_URL}/history_detail?id=${id}`);
-  const data = await res.json();
-
-  goToDetailPage();
-
-  document.getElementById("detailTitle").innerText = data.product_name;
-
-  const link = document.getElementById("detailLink");
-  link.href = data.url;
-  link.innerText = data.url;
-
-  document.getElementById("summaryTextDetail").innerText = data.summary;
-
-  renderCharts(data, "detail");
-  renderReviewTable(data.reviews, "detail");
-
-  showTab("summary", "detail");
 }
 
 function renderCharts(data, mode = "main") {
