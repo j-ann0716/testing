@@ -102,10 +102,12 @@ if (!deviceId) {
 }
 
 let sentimentChart, authChart;
+
 let countdownInterval = null;
+let pollingActive = false;
 
 // =========================
-// ANALYZE (QUEUE MODE)
+// ANALYZE
 // =========================
 async function analyze() {
   const url = document.getElementById('url').value;
@@ -117,32 +119,39 @@ async function analyze() {
   const res = await fetch(`${API_URL}/analyze`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      url,
-      device_id: deviceId
-    })
+    body: JSON.stringify({ url, device_id: deviceId })
   });
 
   const data = await res.json();
-
   const jobId = data.job_id;
 
   startQueueDisplay(data.queue_position, data.estimated_wait_seconds);
 
+  pollingActive = true;
   pollStatus(jobId);
 }
 
 // =========================
-// POLL STATUS
+// POLLING (FIXED)
 // =========================
 async function pollStatus(jobId) {
+  if (!pollingActive) return;
+
   const res = await fetch(`${API_URL}/status?job_id=${jobId}`);
   const data = await res.json();
 
+  // 🔥 ALWAYS UPDATE QUEUE INFO FROM BACKEND
+  if (data.queue_position > 0 && data.status !== "done") {
+    document.getElementById("queueInfo").innerText =
+      `You are #${data.queue_position} in queue | Est wait: ${Math.ceil(data.estimated_wait_seconds / 60)} min`;
+  }
+
   if (data.status === "done") {
+    pollingActive = false;
+
     clearInterval(countdownInterval);
 
-    document.getElementById("queueInfo").innerText = "✅ Analysis complete!";
+    document.getElementById("queueInfo").innerText = "✅ Done!";
     document.getElementById("analyzeBtn").disabled = false;
 
     showResult(data.result);
@@ -150,25 +159,34 @@ async function pollStatus(jobId) {
   }
 
   if (data.status === "processing") {
-    document.getElementById("queueInfo").innerText = "🔄 Processing your request...";
+    document.getElementById("queueInfo").innerText = "🔄 Processing...";
   }
 
-  setTimeout(() => pollStatus(jobId), 3000);
+  setTimeout(() => pollStatus(jobId), 2000);
 }
 
 // =========================
-// QUEUE DISPLAY + COUNTDOWN
+// QUEUE TIMER (VISUAL ONLY)
 // =========================
 function startQueueDisplay(position, seconds) {
   let remaining = seconds;
 
   updateQueueText(position, remaining);
 
+  clearInterval(countdownInterval);
+
   countdownInterval = setInterval(() => {
+    if (!pollingActive) {
+      clearInterval(countdownInterval);
+      return;
+    }
+
     remaining--;
 
     if (remaining <= 0) {
       clearInterval(countdownInterval);
+      document.getElementById("queueInfo").innerText =
+        "🔄 Almost done... finalizing result";
       return;
     }
 
@@ -185,7 +203,7 @@ function updateQueueText(position, seconds) {
 }
 
 // =========================
-// SHOW RESULT
+// RESULT
 // =========================
 function showResult(data) {
   document.getElementById("resultSection").style.display = "block";
