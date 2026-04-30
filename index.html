@@ -89,8 +89,16 @@
 <div id="detailPage" style="display:none;">
   <button onclick="goBack()">Back</button>
 
-  <h2 id="detailTitle"></h2>
-  <a id="detailLink" target="_blank"></a>
+  <div style="display:flex; gap:15px; align-items:center;">
+  
+    <div style="flex:1;">
+      <h2 id="detailTitle"></h2>
+      <a id="detailLink" target="_blank" style="color:orange;"></a>
+    </div>
+  
+    <img id="detailImage"
+         style="width:100px;height:100px;object-fit:cover;border-radius:10px;background:#ccc;">
+  </div>
 
   <div style="margin-top:20px;">
     <button onclick="showTab('sentiment','detail')">Sentiment</button>
@@ -174,10 +182,32 @@ async function loadHistory() {
       div.className = "card";
 
       div.innerHTML = `
-        <b>${item.product_name || "Unknown Product"}</b><br>
-        Dominant: ${item.dominant_type} | Reviews: ${item.total_reviews}<br>
-        <small>${new Date(item.timestamp).toLocaleString()}</small>
-      `;
+      <div style="display:flex; gap:10px; align-items:center;">
+        
+        <!-- IMAGE -->
+        <img src="${item.image_url || ''}" 
+             style="width:60px;height:60px;object-fit:cover;border-radius:8px;background:#ccc;" />
+    
+        <!-- TEXT -->
+        <div style="flex:1;">
+          <div style="font-weight:600;">
+            ${item.product_name || "Unknown Product"}
+          </div>
+          <div style="color:gray; font-size:13px;">
+            ${item.original_url || ""}
+          </div>
+          <div style="margin-top:4px; font-size:12px;">
+            ${new Date(item.timestamp).toLocaleString()}
+          </div>
+        </div>
+    
+        <!-- AUTH SCORE -->
+        <div style="text-align:right; font-weight:bold; color:green;">
+          ${item.dominant_type}
+        </div>
+    
+      </div>
+    `;
 
       div.onclick = () => openHistoryItem(item.session_id);
 
@@ -208,6 +238,7 @@ async function openHistoryItem(id) {
   link.href = data.url;
   link.innerText = data.url;
 
+  document.getElementById("detailImage").src = data.product_image || "";
   document.getElementById("summaryTextDetail").innerText = data.summary;
   
   renderCharts(data, "detail");
@@ -240,7 +271,6 @@ async function analyze() {
       throw new Error(data.error);
     }
 
-    // ✅ DIRECT RESULT (NO QUEUE)
     document.getElementById("resultSection").style.display = "block";
     document.getElementById("summaryText").innerText = data.summary;
 
