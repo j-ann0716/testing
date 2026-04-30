@@ -238,7 +238,7 @@ async function openHistoryItem(id) {
   link.href = data.url;
   link.innerText = data.url;
 
-  document.getElementById("detailImage").src = data.product_image || "";
+  document.getElementById("detailImage").src = data.image_url || "";
   document.getElementById("summaryTextDetail").innerText = data.summary;
   
   renderCharts(data, "detail");
