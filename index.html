@@ -367,10 +367,10 @@ function renderReviewTable(reviews, mode = "main") {
       authenticityClass = "style='color:red;font-weight:bold;'";
     } else if (r.inauthentic) {
       authenticityStatus = "Inauthentic";
-      authenticityClass = "style='color:orange;font-weight:bold;'";
+      authenticityClass = "style='color:black;'";
     } else {
       authenticityStatus = "Authentic";
-      authenticityClass = "style='color:green;'";
+      authenticityClass = "style='color:black;font-weight:bold;'";
     }
 
     html += `
