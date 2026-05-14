@@ -359,24 +359,23 @@ function renderReviewTable(reviews, mode = "main") {
   `;
 
   reviews.forEach(r => {
-    // Check spam FIRST, then inauthentic, then authentic
     let authenticityText = "Authentic";
-    let authenticityStyle = "color: black; font-weight: bold;";
+    let authenticityClass = "authenticity-authentic";
     
-    if (r.spam === true) {
+    if (r.spam === true || r.spam === 1) {
       authenticityText = "Spam";
-      authenticityStyle = "color: red;";
-    } else if (r.inauthentic === true) {
+      authenticityClass = "authenticity-spam";
+    } else if (r.inauthentic === true || r.inauthentic === 1) {
       authenticityText = "Inauthentic";
-      authenticityStyle = "color: black;;";
+      authenticityClass = "authenticity-inauthentic";
     }
-
+  
     html += `
       <tr>
         <td>${r.comment || ""}</td>
         <td>${r.rating || "-"}</td>
         <td>${r.sentiment || "-"}</td>
-        <td style="${authenticityStyle}">${authenticityText}</td>
+        <td class="${authenticityClass}">${authenticityText}</td>
       </tr>
     `;
   });
