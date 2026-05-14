@@ -359,6 +359,7 @@ function renderReviewTable(reviews, mode = "main") {
   `;
 
   reviews.forEach(r => {
+    console.log("Review spam value:", r.spam, "inauthentic:", r.inauthentic); // DEBUG
     let authenticityText = "Authentic";
     let authenticityStyle = "color: black; font-weight: bold;";
     
