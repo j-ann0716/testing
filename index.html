@@ -376,7 +376,7 @@ function renderReviewTable(reviews, mode = "main") {
         <td>${r.comment || ""}</td>
         <td>${r.rating || "-"}</td>
         <td>${r.sentiment || "-"}</td>
-        <td class="${authenticityStyle}">${authenticityText}</td>
+        <td style="${authenticityStyle}">${authenticityText}</td>
       </tr>
     `;
   });
