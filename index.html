@@ -359,18 +359,16 @@ function renderReviewTable(reviews, mode = "main") {
   `;
 
   reviews.forEach(r => {
-    let authenticityStatus = "Authentic";
-    let authenticityClass = "";
+    // Check spam FIRST, then inauthentic, then authentic
+    let authenticityText = "Authentic";
+    let authenticityStyle = "color: black; font-weight: bold;";
     
-    if (r.spam) {
-      authenticityStatus = "Spam";
-      authenticityClass = "style='color:red;font-weight:bold;'";
-    } else if (r.inauthentic) {
-      authenticityStatus = "Inauthentic";
-      authenticityClass = "style='color:black;'";
-    } else {
-      authenticityStatus = "Authentic";
-      authenticityClass = "style='color:black;font-weight:bold;'";
+    if (r.spam === true) {
+      authenticityText = "Spam";
+      authenticityStyle = "color: red;";
+    } else if (r.inauthentic === true) {
+      authenticityText = "Inauthentic";
+      authenticityStyle = "color: black;;";
     }
 
     html += `
@@ -378,13 +376,12 @@ function renderReviewTable(reviews, mode = "main") {
         <td>${r.comment || ""}</td>
         <td>${r.rating || "-"}</td>
         <td>${r.sentiment || "-"}</td>
-        <td ${authenticityClass}>${authenticityStatus}</td>
+        <td style="${authenticityStyle}">${authenticityText}</td>
       </tr>
     `;
   });
 
   html += "</tbody></table>";
-
   container.innerHTML = html;
 }
 </script>
