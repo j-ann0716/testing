@@ -1,4 +1,3 @@
-  
 <!DOCTYPE html>
 <html>
 <head>
@@ -167,7 +166,8 @@ async function loadHistory() {
   container.innerHTML = "Loading...";
 
   try {
-    const res = await fetch(`/api/proxy_history?device_id=${deviceId}`);
+    // FIXED: Use API_URL instead of broken relative path
+    const res = await fetch(`${API_URL}/history?device_id=${deviceId}`);
     const data = await res.json();
 
     if (!data.length) {
@@ -227,7 +227,8 @@ async function openHistoryItem(id) {
     return;
   }
 
-  const res = await fetch(`/api/proxy_history_detail?id=${id}`);
+  // FIXED: Use API_URL instead of broken relative path
+  const res = await fetch(`${API_URL}/history_detail?id=${id}`);
   const data = await res.json();
 
   goToDetailPage();
@@ -388,4 +389,3 @@ function renderReviewTable(reviews, mode = "main") {
 
 </body>
 </html>
-
